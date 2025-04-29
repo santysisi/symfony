@@ -70,6 +70,9 @@ class Security extends InternalSecurity implements AuthorizationCheckerInterface
      */
     public const LAST_USERNAME = SecurityRequestAttributes::LAST_USERNAME;
 
+    /** @var string[] */
+    private const SECURITY_LOGIN_EXCLUSIONS = ['remember_me'];
+
     public function __construct(
         private readonly ContainerInterface $container,
         private readonly array $authenticators = [],
@@ -123,6 +126,10 @@ class Security extends InternalSecurity implements AuthorizationCheckerInterface
 
         if (!$firewallName) {
             throw new LogicException('Unable to login as the current route is not covered by any firewall.');
+        }
+
+        if (in_array($authenticatorName, self::SECURITY_LOGIN_EXCLUSIONS)) {
+            throw new LogicException(sprintf('The "%s" authenticator is not allowed to be used with the "%s" method. Use a different authenticator.', $authenticatorName, __METHOD__));
         }
 
         $authenticator = $this->getAuthenticator($authenticatorName, $firewallName);
@@ -188,16 +195,15 @@ class Security extends InternalSecurity implements AuthorizationCheckerInterface
         $firewallAuthenticatorLocator = $this->authenticators[$firewallName];
 
         if (!$authenticatorName) {
-            $authenticatorIds = array_keys($firewallAuthenticatorLocator->getProvidedServices());
-
-            if (!$authenticatorIds) {
+            $availableAuthenticators = $this->getAvailableAuthenticatorsForLogin($firewallAuthenticatorLocator, $firewallName);
+            if (!$availableAuthenticators) {
                 throw new LogicException(sprintf('No authenticator was found for the firewall "%s".', $firewallName));
             }
-            if (1 < \count($authenticatorIds)) {
-                throw new LogicException(sprintf('Too many authenticators were found for the current firewall "%s". You must provide an instance of "%s" to login programmatically. The available authenticators for the firewall "%s" are "%s".', $firewallName, AuthenticatorInterface::class, $firewallName, implode('" ,"', $authenticatorIds)));
+            if (1 < \count($availableAuthenticators)) {
+                throw new LogicException(sprintf('Too many authenticators were found for the current firewall "%s". You must provide an instance of "%s" to login programmatically. The available authenticators for the firewall "%s" are "%s".', $firewallName, AuthenticatorInterface::class, $firewallName, implode('" ,"', $availableAuthenticators)));
             }
 
-            return $firewallAuthenticatorLocator->get($authenticatorIds[0]);
+            return $firewallAuthenticatorLocator->get($availableAuthenticators[0]);
         }
 
         if ($firewallAuthenticatorLocator->has($authenticatorName)) {
@@ -211,5 +217,13 @@ class Security extends InternalSecurity implements AuthorizationCheckerInterface
         }
 
         return $firewallAuthenticatorLocator->get($authenticatorId);
+    }
+
+    private function getAvailableAuthenticatorsForLogin(ServiceProviderInterface $firewallAuthenticatorLocator, string $firewallName): array
+    {
+        $authenticatorIds = array_keys($firewallAuthenticatorLocator->getProvidedServices());
+        $excludedAuthenticatorIds = array_map(fn(string $exclusion) => 'security.authenticator.' . $exclusion . '.' . $firewallName, self::SECURITY_LOGIN_EXCLUSIONS);
+    
+        return array_values(array_diff($authenticatorIds, $excludedAuthenticatorIds));
     }
 }
