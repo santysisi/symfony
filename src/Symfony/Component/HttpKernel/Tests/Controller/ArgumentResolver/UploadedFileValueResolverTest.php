@@ -72,7 +72,7 @@ class UploadedFileValueResolverTest extends TestCase
             false,
             false,
             null,
-            false,
+            true,
             [$attribute::class => $attribute]
         );
         $event = new ControllerArgumentsEvent(
@@ -85,7 +85,7 @@ class UploadedFileValueResolverTest extends TestCase
         $resolver->onKernelControllerArguments($event);
         $data = $event->getArguments()[0];
 
-        $this->assertEmpty($data);
+        $this->assertNull($data);
     }
 
     /**
